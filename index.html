@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wellerman — 单句深度分析</title>
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Noto Sans SC', sans-serif;
+    overflow: hidden;
+    width: 100vw; height: 100vh;
+    cursor: pointer;
+    user-select: none;
+    background: #0a0e17;
+  }
+
+  /* ===================== PERSISTENT SENTENCE BAR ===================== */
+  .fixed-sentence-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 500;
+    background: linear-gradient(180deg, rgba(10,14,23,0.97) 0%, rgba(10,14,23,0.92) 80%, rgba(10,14,23,0) 100%);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 14px 24px 18px;
+    border-bottom: 1px solid rgba(232,213,183,0.12);
+    text-align: center;
+    transition: opacity 0.5s ease;
+  }
+  .fixed-sentence-bar .bar-label {
+    font-size: 11px;
+    color: #4a5a6e;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    font-family: 'Playfair Display', serif;
+  }
+  .fixed-sentence-bar .bar-en {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(15px, 2.2vw, 22px);
+    color: #e8d5b7;
+    line-height: 1.5;
+    text-shadow: 0 1px 12px rgba(232,213,183,0.25);
+  }
+  .fixed-sentence-bar .bar-cn {
+    font-size: clamp(12px, 1.6vw, 15px);
+    color: #6a7d9b;
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+  .fixed-sentence-bar .bar-highlight {
+    color: #e07a5f;
+    font-weight: 700;
+  }
+
+  /* slide padding-top to account for fixed bar */
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    transform: translateY(40px) scale(0.97);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+    pointer-events: none;
+    z-index: 1;
+    padding-top: 100px;
+  }
+  .slide.active {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+    z-index: 10;
+  }
+
+  /* backgrounds */
+  .bg-ocean {
+    background: linear-gradient(135deg, #0a1628 0%, #0d2137 30%, #132f4c 60%, #0a1628 100%);
+  }
+  .bg-warm {
+    background: linear-gradient(160deg, #1a0a00 0%, #2d1810 40%, #1a2744 100%);
+  }
+  .bg-deep {
+    background: linear-gradient(180deg, #060d1a 0%, #0c1a2e 50%, #162240 100%);
+  }
+  .bg-dark {
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
+  }
+  .bg-end {
+    background: linear-gradient(180deg, #0d1b2a 0%, #1b263b 50%, #415a77 100%);
+  }
+
+  .bg-img {
+    position: absolute; inset:0; z-index:0;
+    background-size: cover;
+    background-position: center;
+    opacity: 0.18;
+    filter: saturate(0.6);
+  }
+  .slide-content {
+    position: relative; z-index:2;
+    max-width: 900px; width: 90%;
+    text-align: center;
+    padding: 40px 20px;
+  }
+
+  /* typography */
+  .title-en {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(28px, 5vw, 56px);
+    color: #e8d5b7;
+    letter-spacing: 2px;
+    line-height: 1.3;
+    text-shadow: 0 2px 20px rgba(232,213,183,0.3);
+  }
+  .title-cn {
+    font-size: clamp(16px, 2.5vw, 24px);
+    color: #8b9dc3;
+    margin-top: 12px;
+    font-weight: 300;
+    letter-spacing: 4px;
+  }
+  .subtitle {
+    font-size: clamp(13px, 1.8vw, 18px);
+    color: #6a7d9b;
+    margin-top: 8px;
+    font-weight: 300;
+  }
+
+  /* sentence highlight */
+  .sentence-box {
+    background: rgba(255,255,255,0.05);
+    border-left: 3px solid #e8d5b7;
+    border-radius: 0 12px 12px 0;
+    padding: 20px 28px;
+    margin: 16px 0;
+    text-align: left;
+    backdrop-filter: blur(10px);
+  }
+  .sentence-en {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(17px, 2.8vw, 26px);
+    color: #f0e6d3;
+    line-height: 1.6;
+    font-style: italic;
+  }
+  .sentence-cn {
+    font-size: clamp(14px, 2vw, 18px);
+    color: #8b9dc3;
+    margin-top: 12px;
+    line-height: 1.8;
+  }
+
+  /* keyword highlight */
+  .kw { color: #e8b87a; font-weight: 700; position: relative; }
+  .kw-red { color: #e07a5f; font-weight: 700; }
+  .kw-blue { color: #81b4d8; font-weight: 700; }
+  .kw-green { color: #81c995; font-weight: 700; }
+
+  /* analysis cards */
+  .cards {
+    display: flex; gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 20px;
+  }
+  .card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 20px 24px;
+    flex: 1; min-width: 200px;
+    max-width: 280px;
+    text-align: left;
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s ease, transform 0.6s ease, border-color 0.3s;
+  }
+  .card.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .card:hover {
+    border-color: rgba(232,213,183,0.4);
+  }
+  .card-title {
+    font-size: 15px;
+    color: #e8d5b7;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .card-text {
+    font-size: 13px;
+    color: #a0aec0;
+    line-height: 1.7;
+  }
+  .card-phonetic {
+    font-size: 12px;
+    color: #6a7d9b;
+    margin-top: 4px;
+    font-family: 'Playfair Display', serif;
+  }
+
+  /* tag */
+  .tag {
+    display: inline-block;
+    background: rgba(232,213,183,0.15);
+    color: #e8d5b7;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    margin: 4px;
+    border: 1px solid rgba(232,213,183,0.2);
+  }
+  .tag-blue {
+    background: rgba(129,180,216,0.15);
+    color: #81b4d8;
+    border-color: rgba(129,180,216,0.2);
+  }
+  .tag-red {
+    background: rgba(224,122,95,0.15);
+    color: #e07a5f;
+    border-color: rgba(224,122,95,0.2);
+  }
+
+  /* structure diagram */
+  .struct-line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 6px 0;
+    flex-wrap: wrap;
+  }
+  .struct-block {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .struct-block.subject { background: rgba(129,180,216,0.2); color: #81b4d8; }
+  .struct-block.verb { background: rgba(224,122,95,0.2); color: #e07a5f; }
+  .struct-block.obj { background: rgba(129,201,149,0.2); color: #81c995; }
+  .struct-arrow { color: #555; font-size: 18px; }
+  .struct-label {
+    font-size: 11px;
+    color: #555;
+    text-align: left;
+    margin-left: 20px;
+  }
+
+  /* verse display */
+  .verse-line {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(15px, 2.5vw, 20px);
+    color: rgba(232,213,183,0.5);
+    line-height: 2;
+    transition: color 0.5s;
+  }
+  .verse-line.highlight {
+    color: #e8d5b7;
+    font-weight: 700;
+  }
+
+  /* page counter */
+  .page-counter {
+    position: fixed;
+    bottom: 24px; right: 32px;
+    font-size: 13px;
+    color: #3a4a5e;
+    z-index: 100;
+    font-family: 'Playfair Display', serif;
+  }
+
+  /* hint */
+  .click-hint {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    color: #2a3a4e;
+    z-index: 100;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity:0.4; }
+    50% { opacity:0.8; }
+  }
+
+  /* anim delay helpers */
+  .d1 { transition-delay: 0.15s !important; }
+  .d2 { transition-delay: 0.3s !important; }
+  .d3 { transition-delay: 0.45s !important; }
+  .d4 { transition-delay: 0.6s !important; }
+  .d5 { transition-delay: 0.75s !important; }
+
+  /* fade-in */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .slide.active .fade-in {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* analysis list */
+  .analysis-list {
+    text-align: left;
+    max-width: 680px;
+    margin: 0 auto;
+  }
+  .analysis-list li {
+    color: #a0aec0;
+    font-size: clamp(13px, 1.8vw, 15px);
+    line-height: 2;
+    list-style: none;
+    padding-left: 20px;
+    position: relative;
+  }
+  .analysis-list li::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 12px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #e8d5b7;
+  }
+
+  /* comparison */
+  .compare {
+    display: flex; gap: 20px; justify-content: center;
+    flex-wrap: wrap; margin-top: 16px;
+  }
+  .compare-col {
+    flex:1; min-width: 220px; max-width: 340px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: left;
+  }
+  .compare-col h3 {
+    font-size: 14px; color: #e8d5b7;
+    margin-bottom: 10px; font-weight: 500;
+  }
+  .compare-col p {
+    font-size: 13px; color: #8b9dc3;
+    line-height: 1.8;
+  }
+
+  /* progress bar */
+  .progress-bar {
+    position: fixed;
+    top: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #e8d5b7, #e07a5f);
+    z-index: 200;
+    transition: width 0.5s ease;
+    box-shadow: 0 0 10px rgba(232,213,183,0.4);
+  }
+
+  /* wave decoration */
+  .wave-bottom {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 80px;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .wave-bottom svg {
+    position: absolute;
+    bottom: 0;
+    width: 200%;
+    animation: waveMove 8s linear infinite;
+  }
+  @keyframes waveMove {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  /* theme item */
+  .theme-item {
+    opacity: 0;
+    transform: translateX(-20px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .theme-item.show {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  .theme-num {
+    font-family: 'Playfair Display', serif;
+    font-size: 32px;
+    color: rgba(232,213,183,0.2);
+    font-weight: 700;
+  }
+  .theme-title {
+    font-size: 16px;
+    color: #e8d5b7;
+    font-weight: 500;
+    margin: 4px 0;
+  }
+  .theme-desc {
+    font-size: 13px;
+    color: #8b9dc3;
+    line-height: 1.6;
+  }
+
+  /* slide1 special padding */
+  .slide.slide1 .slide-content {
+    padding-top: 20px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===================== PERSISTENT SENTENCE BAR ===================== -->
+<div class="fixed-sentence-bar" id="fixedBar">
+  <div class="bar-label">ANALYZED SENTENCE</div>
+  <div class="bar-en">
+    <span class="bar-highlight">No line was cut</span>, <span class="bar-highlight">no whale was freed</span>;
+    The Captain's mind was not of greed,
+    But he belonged to the <span class="bar-highlight">whaleman's creed</span>
+  </div>
+  <div class="bar-cn">
+    绳索没有割断，鲸鱼也没有逃脱；船长并非出于贪婪，而是他恪守着捕鲸人的信条
+  </div>
+</div>
+
+<div class="progress-bar" id="progress"></div>
+<div class="page-counter" id="counter">1 / 8</div>
+<div class="click-hint" id="hint">click anywhere to continue · 点击任意位置继续</div>
+
+<!-- ==================== SLIDE 1: Title ==================== -->
+<div class="slide bg-ocean active slide1" data-slide="0">
+  <div class="bg-img" style="background-image:url('https://images.unsplash.com/photo-1505118380757-91f5f5632de0?w=1920')"></div>
+  <div class="slide-content">
+    <div class="fade-in">
+      <div class="subtitle" style="letter-spacing:6px; margin-bottom:20px">SENTENCE ANALYSIS</div>
+    </div>
+    <div class="fade-in d1">
+      <div class="title-en">Wellerman</div>
+    </div>
+    <div class="fade-in d2">
+      <div class="title-cn">单句深度分析</div>
+    </div>
+    <div class="fade-in d3">
+      <div class="subtitle" style="margin-top:24px">No line was cut, no whale was freed</div>
+    </div>
+    <div class="fade-in d4">
+      <div style="margin-top:32px">
+        <span class="tag">Sea Shanty</span>
+        <span class="tag">Grammar</span>
+        <span class="tag">Vocabulary</span>
+        <span class="tag">Culture</span>
+      </div>
+    </div>
+  </div>
+  <div class="wave-bottom">
+    <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+      <path d="M0,40 C360,80 720,0 1080,40 C1260,60 1350,20 1440,40 L1440,80 L0,80 Z" fill="rgba(232,213,183,0.06)"/>
+      <path d="M0,50 C360,10 720,70 1080,30 C1260,50 1350,30 1440,50 L1440,80 L0,80 Z" fill="rgba(232,213,183,0.04)"/>
+      <path d="M1440,40 C1800,80 2160,0 2520,40 C2700,60 2790,20 2880,40 L2880,80 L1440,80 Z" fill="rgba(232,213,183,0.06)"/>
+      <path d="M1440,50 C1800,10 2160,70 2520,30 C2700,50 2790,30 2880,50 L2880,80 L1440,80 Z" fill="rgba(232,213,183,0.04)"/>
+    </svg>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 2: Song Background ==================== -->
+<div class="slide bg-deep" data-slide="1">
+  <div class="bg-img" style="background-image:url('https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=1920')"></div>
+  <div class="slide-content">
+    <div class="fade-in">
+      <div class="subtitle" style="letter-spacing:4px; margin-bottom:12px">BACKGROUND</div>
+      <div class="title-en" style="font-size:clamp(22px,4vw,36px)">Song Context</div>
+      <div class="title-cn" style="font-size:clamp(14px,2vw,18px)">歌曲背景</div>
+    </div>
+    <div class="fade-in d2">
+      <div style="margin-top:28px; text-align:left; max-width:640px; margin-left:auto; margin-right:auto">
+        <ul class="analysis-list">
+          <li class="fade-in d2">《Wellerman》是一首新西兰民谣，讲述19世纪捕鲸船员的故事</li>
+          <li class="fade-in d3"><strong style="color:#e8d5b7">Wellerman</strong> 指威勒兄弟公司的补给船，为船员带来糖、茶和朗姆酒</li>
+          <li class="fade-in d4">2021年苏格兰歌手 <strong style="color:#e8d5b7">Nathan Evans</strong> 在 TikTok 翻唱后风靡全球</li>
+          <li class="fade-in d5">我们选来分析的句子出自第4节——全曲最具文学性的段落</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 3: Full Verse ==================== -->
+<div class="slide bg-warm" data-slide="2">
+  <div class="bg-img" style="background-image:url('https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=1920')"></div>
+  <div class="slide-content">
+    <div class="fade-in">
+      <div class="subtitle" style="letter-spacing:4px; margin-bottom:12px">VERSE 4</div>
+      <div class="title-en" style="font-size:clamp(20px,3.5vw,30px)">The Full Verse</div>
+    </div>
+    <div class="fade-in d1" style="margin-top:32px">
+      <div class="verse-line">She had not been two weeks from shore</div>
+      <div class="verse-line">When down on her a right whale bore.</div>
+      <div class="verse-line">The captain called all hands and swore</div>
+      <div class="verse-line">He'd take that whale in tow.</div>
+      <br>
+      <div class="verse-line highlight">No line was cut, no whale was freed;</div>
+      <div class="verse-line highlight">The Captain's mind was not of greed,</div>
+      <div class="verse-line highlight">But he belonged to the whaleman's creed;</div>
+      <div class="verse-line highlight">She took the ship in tow.</div>
+      <br>
+      <div class="verse-line">For forty days, or even more,</div>
+      <div class="verse-line">The line went slack, then tight once more.</div>
+    </div>
+    <div class="fade-in d3" style="margin-top:24px">
+      <div class="sentence-cn" style="max-width:500px; margin:0 auto; opacity:0.7">
+        绳索没有割断，鲸鱼也没有逃脱；<br>
+        船长并非出于贪婪，<br>
+        而是他恪守着捕鲸人的信条——<br>
+        那鲸鱼拖着整艘船就走。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 4: Grammar — Parallelism ==================== -->
+<div class="slide bg-deep" data-slide="3">
+  <div class="bg-img" style="background-image:url('https://images.unsplash.com/photo-1499244571948-7ccddb3583f1?w=1920')"></div>
+  <div class="slide-content">
+    <div class="fade-in">
+      <div class="subtitle" style="letter-spacing:4px; margin-bottom:12px">GRAMMAR</div>
+      <div class="title-en" style="font-size:clamp(20px,3.5vw,30px)">Parallelism & Passive Voice</div>
+      <div class="title-cn">排比修辞与被动语态</div>
+    </div>
+
+    <div class="fade-in d1" style="margin-top:28px">
+      <div class="sentence-box">
+        <div class="sentence-en">
+          <span class="kw-red">No line</span> <span class="kw-blue">was cut</span>, <span class="kw-red">no whale</span> <span class="kw-blue">was freed</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="fade-in d2" style="margin-top:20px">
+      <div class="struct-line">
+        <span class="struct-block subject">No line</span>
+        <span class="struct-arrow">&rarr;</span>
+        <span class="struct-block verb">was cut</span>
+        <span class="struct-arrow">&rarr;</span>
+        <span class="struct-block obj">(by anyone)</span>
+      </div>
+      <div class="struct-line">
+        <span class="struct-block subject">no whale</span>
+        <span class="struct-arrow">&rarr;</span>
+        <span class="struct-block verb">was freed</span>
+        <span class="struct-arrow">&rarr;</span>
+        <span class="struct-block obj">(by anyone)</span>
+      </div>
+      <div class="struct-label">Structure: Subject + be + Past Participle (Passive Voice)</div>
+    </div>
+
+    <div class="fade-in d3">
+      <div class="cards" style="margin-top:20px">
+        <div class="card show">
+          <div class="card-title">排比 (Parallelism)</div>
+          <div class="card-text">两个 <span style="color:#e8d5b7">No...</span> 并列，语气逐步加强，强调船长"绝不放弃"的坚定决心</div>
+        </div>
+        <div class="card show">
+          <div class="card-title">被动语态 (Passive)</div>
+          <div class="card-text">was cut / was freed 省略了执行者，使叙述更加客观、冷静，如同在讲述一个传奇</div>
+        </div>
+        <div class="card show">
+          <div class="card-title">双重否定</div>
+          <div class="card-text">No... no... 形成双重否定结构，实际上是在强调"什么都没有发生"的僵持状态</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 5: Grammar — But / belonged to ==================== -->
+<div class="slide bg-dark" data-slide="4">
+  <div class="bg-img" style="background-image:url('https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1920')"></div>
+  <div class="slide-content">
+    <div class="fade-in">
+      <div class="subtitle" style="letter-spacing:4px; margin-bottom:12px">GRAMMAR</div>
+      <div class="title-en" style="font-size:clamp(20px,3.5vw,30px)">Contrast & Possession</div>
+      <div class="title-cn">转折结构与所有格</div>
+    </div>
+
+    <div class="fade-in d1" style="margin-top:28px">
+      <div class="sentence-box">
+        <div class="sentence-en">
+          The Captain's mind was not of greed,<br>
+          <span class="kw">But</span> he <span class="kw-green">belonged to</span> the <span class="kw">whaleman's</span> creed
+        </div>
+      </div>
+    </div>
+
+    <div class="fade-in d2" style="margin-top:24px">
+      <div class="compare">
+        <div class="compare-col">
+          <h3>But — 转折连词</h3>
+          <p>连接两个语义相反的分句：<br>
+          "not of greed" (不是贪婪)<br>
+          <span style="color:#e8d5b7">&darr;</span> 转折<br>
+          "belonged to the creed" (恪守信条)<br><br>
+          <span style="color:#6a7d9b">说明船长的行为有更深层的动机，而非表面上的物质追求</span></p>
+        </div>
+        <div class="compare-col">
+          <h3>whaleman's — 名词所有格</h3>
+          <p><span style="color:#e8d5b7">whaleman</span> + <span style="color:#e8d5b7">'s</span> = 捕鲸人的<br><br>
+          <span style="color:#e8d5b7">creed</span> /kri&#720;d/ 信条、教条<br>
+          比 belief 更正式、更具仪式感<br><br>
+          <span style="color:#6a7d9b">belonged to = 属于、恪守<br>将信条视为精神归属</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="fade-in d3" style="margin-top:20px">
+      <div class="cards">
+        <div class="card show">
+          <div class="card-title">belong to</div>
+          <div class="card-text">通常表示"属于"，但这里引申为精神层面的认同和归属</div>
+        </div>
+        <div class="card show">
+          <div class="card-title">was not of greed</div>
+          <div class="card-text">"of + 名词" 表示属性特征，等同于 "was not greedy"</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 6: Vocabulary ==================== -->
+<div class="slide bg-warm" data-slide="5">
+  <div class="bg-img" style="background-image:url('https://images.unsplash.com/photo-1559827260-dc66d52bd19b?w=1920')"></div>
+  <div class="slide-content">
+    <div class="fade-in">
+      <div class="subtitle" style="letter-spacing:4px; margin-bottom:12px">VOCABULARY</div>
+      <div class="title-en" style="font-size:clamp(20px,3.5vw,30px)">Key Words</div>
+      <div class="title-cn">核心词汇</div>
+    </div>
+
+    <div class="fade-in d1" style="margin-top:28px">
+      <div class="cards" style="justify-content:center">
+        <div class="card show">
+          <div class="card-title">line</div>
+          <div class="card-text">捕鲸绳索（名词），连接鱼叉与船的缆绳</div>
+          <div class="card-phonetic">/la&#618;n/</div>
+        </div>
+        <div class="card show d1">
+          <div class="card-title">creed</div>
+          <div class="card-text">信条、教条。比 belief 更正式，暗示一种不可动摇的信念</div>
+          <div class="card-phonetic">/kri&#720;d/</div>
+        </div>
+        <div class="card show d2">
+          <div class="card-title">greed</div>
+          <div class="card-text">贪婪。这里暗示外界可能这样评价船长，但事实并非如此</div>
+          <div class="card-phonetic">/&#609;ri&#720;d/</div>
+        </div>
+        <div class="card show d3">
+          <div class="card-title">freed</div>
+          <div class="card-text">free 的过去分词，被动语态中意为"被释放、被逃脱"</div>
+          <div class="card-phonetic">/fri&#720;d/</div>
+        </div>
+        <div class="card show d4">
+          <div class="card-title">tow</div>
+          <div class="card-text">拖拽（动词/名词）。take in tow = 用绳索拖住</div>
+          <div class="card-phonetic">/to&#650;/</div>
+        </div>
+        <div class="card show d5">
+          <div class="card-title">whaleman</div>
+          <div class="card-text">捕鲸人。19世纪对以捕鲸为生的水手的统称</div>
+          <div class="card-phonetic">/&#712;we&#618;lm&#601;n/</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fade-in d5" style="margin-top:20px">
+      <div class="tag">creed 与 greed 押韵 /ri&#720;d/</div>
+      <div class="tag tag-blue">freed 与 greed 形成语音呼应</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 7: Content & Theme ==================== -->
+<div class="slide bg-deep" data-slide="6">
+  <div class="bg-img" style="background-image:url('https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=1920')"></div>
+  <div class="slide-content">
+    <div class="fade-in">
+      <div class="subtitle" style="letter-spacing:4px; margin-bottom:12px">THEME</div>
+      <div class="title-en" style="font-size:clamp(20px,3.5vw,30px)">Deeper Meaning</div>
+      <div class="title-cn">深层含义</div>
+    </div>
+
+    <div class="fade-in d1" style="margin-top:28px">
+      <div class="theme-item show" style="text-align:left; max-width:640px; margin:0 auto 20px">
+        <div class="theme-num">01</div>
+        <div class="theme-title">人类的执念 vs. 自然的力量</div>
+        <div class="theme-desc">"No line was cut" 表面上是勇气的象征，但换个角度看——船长拒绝放手，是否也是一种危险的执念？鲸鱼为了生存而战，船员为了财富和信条而战，双方都不肯退让。</div>
+      </div>
+      <div class="theme-item show d2" style="text-align:left; max-width:640px; margin:0 auto 20px">
+        <div class="theme-num">02</div>
+        <div class="theme-title">精神归属高于物质追求</div>
+        <div class="theme-desc">"not of greed, but belonged to the whaleman's creed" 这一句揭示了船长行为的深层动机——他追逐的不仅是鲸鱼的价值，更是对捕鲸人身份的认同。这种"信条"让他即使面临巨大风险也不退缩。</div>
+      </div>
+      <div class="theme-item show d3" style="text-align:left; max-width:640px; margin:0 auto 20px">
+        <div class="theme-num">03</div>
+        <div class="theme-title">历史反思</div>
+        <div class="theme-desc">19世纪的捕鲸业几乎将露脊鲸推向灭绝。这首歌在提醒我们：人类的"信条"有时候是否成为了伤害自然的借口？</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 8: Ending ==================== -->
+<div class="slide bg-end" data-slide="7">
+  <div class="slide-content">
+    <div class="fade-in">
+      <div class="title-en" style="font-size:clamp(28px,5vw,52px)">Thank You</div>
+      <div class="title-cn" style="margin-top:16px">谢谢聆听</div>
+    </div>
+    <div class="fade-in d2" style="margin-top:32px">
+      <div class="sentence-box" style="border-left-color:#81b4d8; text-align:center; max-width:500px; margin:0 auto">
+        <div class="sentence-en" style="font-size:clamp(16px,2.5vw,22px)">
+          "No line was cut, no whale was freed"
+        </div>
+        <div class="sentence-cn" style="margin-top:8px; font-size:clamp(12px,1.6vw,15px)">
+          绳索没有割断，鲸鱼也没有逃脱
+        </div>
+      </div>
+    </div>
+    <div class="fade-in d3" style="margin-top:28px">
+      <div class="subtitle" style="opacity:0.6">Wellerman &middot; Sentence Time &middot; 2026</div>
+    </div>
+  </div>
+  <div class="wave-bottom">
+    <svg viewBox="0 0 1440 80" preserveAspectRatio="none">
+      <path d="M0,40 C360,80 720,0 1080,40 C1260,60 1350,20 1440,40 L1440,80 L0,80 Z" fill="rgba(232,213,183,0.08)"/>
+      <path d="M1440,40 C1800,80 2160,0 2520,40 C2700,60 2790,20 2880,40 L2880,80 L1440,80 Z" fill="rgba(232,213,183,0.06)"/>
+    </svg>
+  </div>
+</div>
+
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let current = 0;
+  let isAnimating = false;
+
+  function updateSlide() {
+    slides.forEach((s, i) => {
+      s.classList.remove('active');
+      s.querySelectorAll('.card').forEach(c => c.classList.remove('show'));
+      s.querySelectorAll('.theme-item').forEach(c => c.classList.remove('show'));
+    });
+
+    slides[current].classList.add('active');
+
+    // animate cards
+    const cards = slides[current].querySelectorAll('.card');
+    cards.forEach((c, i) => {
+      setTimeout(() => c.classList.add('show'), 300 + i * 150);
+    });
+
+    const themes = slides[current].querySelectorAll('.theme-item');
+    themes.forEach((t, i) => {
+      setTimeout(() => t.classList.add('show'), 400 + i * 200);
+    });
+
+    // progress
+    document.getElementById('progress').style.width = ((current + 1) / total * 100) + '%';
+    document.getElementById('counter').textContent = (current + 1) + ' / ' + total;
+
+    // hide hint after first click
+    if (current > 0) {
+      document.getElementById('hint').style.opacity = '0';
+    }
+
+    isAnimating = false;
+  }
+
+  document.addEventListener('click', (e) => {
+    if (isAnimating) return;
+    isAnimating = true;
+    if (current < total - 1) {
+      current++;
+      updateSlide();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (isAnimating) return;
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      isAnimating = true;
+      if (current < total - 1) {
+        current++;
+        updateSlide();
+      }
+    }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      isAnimating = true;
+      if (current > 0) {
+        current--;
+        updateSlide();
+      }
+    }
+  });
+
+  // initial card animation
+  setTimeout(() => {
+    document.querySelectorAll('.slide.active .card').forEach((c, i) => {
+      setTimeout(() => c.classList.add('show'), 300 + i * 150);
+    });
+  }, 500);
+</script>
+
+</body>
+</html>
